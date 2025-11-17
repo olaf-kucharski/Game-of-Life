@@ -1,15 +1,24 @@
 CC = gcc
-CFLAGS = -O2 -Wall
-TARGET = gol-cpu
+NVCC = nvcc
+CFLAGS = -O2
 
-all: $(TARGET)
+CPU_TARGET = gol-cpu
+GPU_TARGET = gol-gpu
 
-$(TARGET): gol-cpu.c
-	$(CC) $(CFLAGS) -o $(TARGET) gol-cpu.c
+all: $(CPU_TARGET) $(GPU_TARGET)
 
-# Numbers 20, 40 and 10 indicate default parameters, meaning 20 rows, 40 columns and 10 steps
-run: $(TARGET)
-	./$(TARGET) 20 40 10
+$(CPU_TARGET): gol-cpu.c
+	$(CC) $(CFLAGS) -o $(CPU_TARGET) gol-cpu.c
+
+$(GPU_TARGET): gol-gpu.cu
+	$(NVCC) $(CFLAGS) -o $(GPU_TARGET) gol-gpu.cu
+
+# Default parameters: 20 rows, 40 columns, 10 steps
+run-cpu: $(CPU_TARGET)
+	./$(CPU_TARGET) 20 40 10
+
+run-gpu: $(GPU_TARGET)
+	./$(GPU_TARGET) 20 40 10
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(CPU_TARGET) $(GPU_TARGET)
