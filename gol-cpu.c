@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <time.h>
 
+// TODO: Add OpenMP parallelization for performance improvement
+// TODO: Add MPI support for distributed computing
+
 static inline int idx(int r, int c, int W) { return r * W + c; }
 
 void step(const unsigned char *cur, unsigned char *next, int H, int W)
