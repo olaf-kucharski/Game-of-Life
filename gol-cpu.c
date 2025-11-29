@@ -30,6 +30,9 @@ void step(const unsigned char *cur, unsigned char *next, int H, int W)
 
 void print_board(const unsigned char *board, int H, int W)
 {
+    // Limiting printing for large boards during performance tests
+    if (H > 50 || W > 50) return;
+
     for (int r = 0; r < H; ++r)
     {
         for (int c = 0; c < W; ++c)
@@ -63,8 +66,15 @@ int main(int argc, char **argv)
     for (int i = 0; i < H * W; ++i)
         cur[i] = rand() & 1;
 
-    printf("Initial board:\n");
-    print_board(cur, H, W);
+    if (H <= 50 && W <= 50) {
+        printf("Initial board:\n");
+        print_board(cur, H, W);
+    } else {
+        printf("Board too large to print, skipping visualization...\n");
+    }
+
+    // --- TIME MEASUREMENT START ---
+    clock_t start = clock();
 
     for (int s = 0; s < steps; ++s)
     {
@@ -74,8 +84,23 @@ int main(int argc, char **argv)
         next = tmp;
     }
 
-    printf("\nAfter %d steps:\n", steps);
-    print_board(cur, H, W);
+    clock_t end = clock();
+    // --- TIME MEASUREMENT STOP ---
+
+    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+
+    if (H <= 50 && W <= 50) {
+        printf("\nAfter %d steps:\n", steps);
+        print_board(cur, H, W);
+    }
+
+    printf("\n------------------------------------------------\n");
+    printf("CPU Execution Summary:\n");
+    printf("Grid Size: %dx%d\n", H, W);
+    printf("Steps: %d\n", steps);
+    printf("Total Time: %.6f seconds\n", time_spent);
+    printf("Avg Time per Step: %.6f seconds\n", time_spent / steps);
+    printf("------------------------------------------------\n");
 
     free(cur);
     free(next);

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdint.h>
+#include <cuda_runtime.h>
 
 // A macro for CUDA error checking
 #define CHECK_CUDA(err) do { cudaError_t e = (err); if (e != cudaSuccess) { \
@@ -34,11 +35,6 @@ __global__ void step_kernel(const uint32_t *cur_bits, uint32_t *next_bits, int H
     int r = gid / W;
     int c = gid % W;
 
-    // We'll load neighbors by querying cur_bits (global) per needed cell -> slower,
-    // so instead we load a tile into shared memory. To simplify, we make each block a 1D strip across columns.
-    // But for readability and correctness we will load local 3x3 by reading global bits.
-
-    // compute sum of neighbors (wrap)
     int live = 0;
     for (int dr = -1; dr <= 1; ++dr) {
         int rr = (r + dr + H) % H;
@@ -62,13 +58,16 @@ __global__ void step_kernel(const uint32_t *cur_bits, uint32_t *next_bits, int H
     int new_state = (state && (live == 2 || live == 3)) || (!state && live == 3);
 
     if (new_state) {
-        // Update next state using atomic OR to avoid race conditions
+        // Atomic OR is necessary here because multiple threads might write to the same uint32 word
         uint32_t mask = 1u << bcur;
         atomicOr(&next_bits[wcur], mask);
     }
 }
 
 void print_board_bits(const uint32_t *bits, int H, int W) {
+    // Limiting printing for large boards during performance tests
+    if (H > 50 || W > 50) return;
+    
     for (int r = 0; r < H; ++r) {
         for (int c = 0; c < W; ++c) {
             int idx = r*W + c;
@@ -86,14 +85,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Check if GPU is used
     cudaDeviceProp prop;
     int dev = 0;
     CHECK_CUDA(cudaGetDeviceProperties(&prop, dev));
     printf("Running on GPU: %s with %d multiprocessors, %zu bytes of global memory\n",
            prop.name, prop.multiProcessorCount, prop.totalGlobalMem);
 
-    // Parse dimensions and steps
     int H = atoi(argv[1]);
     int W = atoi(argv[2]);
     int steps = atoi(argv[3]);
@@ -101,55 +98,89 @@ int main(int argc, char **argv) {
     int total = H * W;
     size_t words = words_for_bits(total);
 
-    // Allocate CPU memory
     uint32_t *h_cur = (uint32_t*)calloc(words, sizeof(uint32_t));
     uint32_t *h_next = (uint32_t*)calloc(words, sizeof(uint32_t));
     if (!h_cur || !h_next) { perror("alloc"); return 1; }
 
-    // Randomize initial game state
     srand((unsigned)time(NULL));
     for (int i = 0; i < total; ++i) {
         if (rand() & 1) set_bit_host(h_cur, i, 1);
     }
 
-    printf("Initial board:\n");
-    print_board_bits(h_cur, H, W);
+    // Limiting printing for large boards during performance tests
+    if (H <= 50 && W <= 50) {
+        printf("Initial board:\n");
+        print_board_bits(h_cur, H, W);
+    }
 
-    // Allocate memory on GPU
     uint32_t *d_cur = NULL, *d_next = NULL;
     CHECK_CUDA(cudaMalloc((void**)&d_cur, words * sizeof(uint32_t)));
     CHECK_CUDA(cudaMalloc((void**)&d_next, words * sizeof(uint32_t)));
 
-    // Copy host data to GPU
+    // Create CUDA events for timing
+    cudaEvent_t start, stop, compute_start, compute_stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventCreate(&compute_start);
+    cudaEventCreate(&compute_stop);
+
+    // --- TOTAL TIMING START (Includes H2D copy) ---
+    cudaEventRecord(start);
+
     CHECK_CUDA(cudaMemcpy(d_cur, h_cur, words * sizeof(uint32_t), cudaMemcpyHostToDevice));
 
-    // Kernel launch params
     int threads = 256;
     int blocks = (total + threads - 1) / threads;
 
-    // Run simulation
+    // --- COMPUTE TIMING START ---
+    cudaEventRecord(compute_start);
+
     for (int s = 0; s < steps; ++s) {
         CHECK_CUDA(cudaMemset(d_next, 0, words * sizeof(uint32_t)));
-
         step_kernel<<<blocks, threads>>>(d_cur, d_next, H, W, total);
-        CHECK_CUDA(cudaGetLastError());
-        CHECK_CUDA(cudaDeviceSynchronize());
-
-        // Buffers swap efficiency trick
+        
+        // No need for cudaDeviceSynchronize inside loop unless debugging or swapping requires host intervention
+        // Pointers swap logic is host-side only, so it's instant, but we are swapping device pointers.
         uint32_t *tmp = d_cur; d_cur = d_next; d_next = tmp;
     }
+    
+    // --- COMPUTE TIMING STOP ---
+    cudaEventRecord(compute_stop);
 
-    // Copy final result back to CPU
     CHECK_CUDA(cudaMemcpy(h_cur, d_cur, words * sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
-    printf("\nAfter %d steps:\n", steps);
-    print_board_bits(h_cur, H, W);
+    // --- TOTAL TIMING STOP ---
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
 
-    // Free memory
+    float total_milliseconds = 0;
+    float compute_milliseconds = 0;
+    cudaEventElapsedTime(&total_milliseconds, start, stop);
+    cudaEventElapsedTime(&compute_milliseconds, compute_start, compute_stop);
+
+    if (H <= 50 && W <= 50) {
+        printf("\nAfter %d steps:\n", steps);
+        print_board_bits(h_cur, H, W);
+    }
+
+    printf("\n------------------------------------------------\n");
+    printf("GPU CUDA Execution Summary:\n");
+    printf("Grid Size: %dx%d\n", H, W);
+    printf("Steps: %d\n", steps);
+    printf("Total Time (incl. transfer): %.3f ms\n", total_milliseconds);
+    printf("Compute Time (Kernel only):  %.3f ms\n", compute_milliseconds);
+    printf("Transfer Overhead:           %.3f ms\n", total_milliseconds - compute_milliseconds);
+    printf("Avg Kernel Time per Step:    %.3f ms\n", compute_milliseconds / steps);
+    printf("------------------------------------------------\n");
+
     free(h_cur);
     free(h_next);
     cudaFree(d_cur);
     cudaFree(d_next);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    cudaEventDestroy(compute_start);
+    cudaEventDestroy(compute_stop);
     
     return 0;
 }
