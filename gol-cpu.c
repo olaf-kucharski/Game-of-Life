@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <omp.h>
 
 // TODO: Add OpenMP parallelization for performance improvement
 // TODO: Add MPI support for distributed computing
@@ -9,6 +10,7 @@ static inline int idx(int r, int c, int W) { return r * W + c; }
 
 void step(const unsigned char *cur, unsigned char *next, int H, int W)
 {
+    #pragma omp parallel for schedule(static)
     for (int r = 0; r < H; ++r)
     {
         for (int c = 0; c < W; ++c)
@@ -76,8 +78,10 @@ int main(int argc, char **argv)
         printf("Board too large to print, skipping visualization...\n");
     }
 
+    printf("OpenMP threads: %d\n", omp_get_max_threads());
+
     // --- TIME MEASUREMENT START ---
-    clock_t start = clock();
+    double start = omp_get_wtime();
 
     for (int s = 0; s < steps; ++s)
     {
@@ -87,10 +91,10 @@ int main(int argc, char **argv)
         next = tmp;
     }
 
-    clock_t end = clock();
+    double end = omp_get_wtime();
     // --- TIME MEASUREMENT STOP ---
 
-    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+    double time_spent = end - start;
 
     if (H <= 50 && W <= 50) {
         printf("\nAfter %d steps:\n", steps);

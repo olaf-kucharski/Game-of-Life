@@ -1,6 +1,7 @@
 CC = gcc
 NVCC = nvcc
 CFLAGS = -O2
+OMPFLAG = -fopenmp
 
 CPU_TARGET = gol-cpu
 GPU_TARGET = gol-gpu
@@ -8,7 +9,7 @@ GPU_TARGET = gol-gpu
 all: $(CPU_TARGET) $(GPU_TARGET)
 
 $(CPU_TARGET): gol-cpu.c
-	$(CC) $(CFLAGS) -o $(CPU_TARGET) gol-cpu.c
+	$(CC) $(CFLAGS) $(OMPFLAG) -o $(CPU_TARGET) gol-cpu.c
 
 $(GPU_TARGET): gol-gpu.cu
 	$(NVCC) $(CFLAGS) -o $(GPU_TARGET) gol-gpu.cu
