@@ -39,8 +39,7 @@ __device__ inline int get_bit_device(const uint32_t *arr, int r, int c, int W) {
 
 // --- CUDA kernel z pamięcią współdzieloną ---
 __global__ void step_kernel_shared(const uint32_t *cur_bits, uint32_t *next_bits, int H, int W) {
-    // Wymiary kafelka w pamięci shared: BLOCK_DIM + 2 marginesy z każdej strony
-    // Używamy uint8_t w shared memory dla szybkości (unikamy operacji bitowych przy sumowaniu)
+    // Shared memory: Kafelek + marginesy (Halo) dla sąsiadów
     __shared__ uint8_t tile[BLOCK_DIM + 2][BLOCK_DIM + 2];
 
     int tx = threadIdx.x;
@@ -51,8 +50,7 @@ __global__ void step_kernel_shared(const uint32_t *cur_bits, uint32_t *next_bits
     int out_r = blockIdx.y * blockDim.y + ty;
 
     // --- FAZA 1: Ładowanie danych do Shared Memory ---
-    // Musimy załadować obszar [BLOCK_DIM+2]x[BLOCK_DIM+2].
-    // Ponieważ wątków jest BLOCK_DIM*BLOCK_DIM, zrównoleglamy ładowanie.
+    // Pobranie skompresowanego słowa bitowego i wyłuskanie odpowiedniego bitu
     int tile_h = BLOCK_DIM + 2;
     int tile_w = BLOCK_DIM + 2;
     int num_threads = BLOCK_DIM * BLOCK_DIM;
@@ -200,11 +198,11 @@ int main(int argc, char **argv) {
     }
 
     printf("\n------------------------------------------------\n");
-    printf("GPU CUDA z pamięcią współdzieloną:\n");
+    printf("GPU CUDA z pamiiecia wspoldzielona:\n");
     printf("Rozmiar siatki: %dx%d\n", H, W);
-    printf("Liczba kroków: %d\n", steps);
-    printf("Całkowity czas: %.3f ms\n", total_milliseconds);
-    printf("Czas obliczeń: %.3f ms\n", compute_milliseconds);
+    printf("Liczba krokow: %d\n", steps);
+    printf("Calkowity czas: %.3f ms\n", total_milliseconds);
+    printf("Czas obliczen: %.3f ms\n", compute_milliseconds);
     printf("------------------------------------------------\n");
 
     free(h_cur); free(h_next);

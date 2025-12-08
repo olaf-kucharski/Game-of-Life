@@ -102,12 +102,14 @@ int main(int argc, char **argv)
     }
 
     printf("\n------------------------------------------------\n");
-    printf("CPU Execution Summary:\n");
-    printf("Grid Size: %dx%d\n", H, W);
-    printf("Steps: %d\n", steps);
-    printf("Total Time: %.6f seconds\n", time_spent);
-    printf("Avg Time per Step: %.6f seconds\n", time_spent / steps);
+    printf("Podsumowanie wykonania CPU:\n");
+    printf("Rozmiar siatki: %d x %d\n", H, W);
+    printf("Liczba krokow: %d\n", steps);
+    printf("Laczny czas: %.6f sekund\n", time_spent);
+    printf("Sredni czas na krok: %.6f sekund\n", time_spent / steps);
     printf("------------------------------------------------\n");
+
+
 
     free(cur);
     free(next);
