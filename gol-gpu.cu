@@ -150,8 +150,10 @@ int main(int argc, char **argv) {
     }
 
     if (H <= 50 && W <= 50) {
-        printf("Initial board:\n");
+        printf("Poczatkowa plansza:\n");
         print_board_bits(h_cur, H, W);
+    } else {
+        printf("Plansza zbyt duza, pomijam wizualizacje...\n");
     }
 
     uint32_t *d_cur = NULL, *d_next = NULL;
@@ -201,8 +203,8 @@ int main(int argc, char **argv) {
     printf("GPU CUDA z pamiiecia wspoldzielona:\n");
     printf("Rozmiar siatki: %dx%d\n", H, W);
     printf("Liczba krokow: %d\n", steps);
-    printf("Calkowity czas: %.3f ms\n", total_milliseconds);
     printf("Czas obliczen: %.3f ms\n", compute_milliseconds);
+    printf("Sredni czas na krok: %.3f ms\n", compute_milliseconds / steps);
     printf("------------------------------------------------\n");
 
     free(h_cur); free(h_next);

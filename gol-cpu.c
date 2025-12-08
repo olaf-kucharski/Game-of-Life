@@ -72,10 +72,10 @@ int main(int argc, char **argv)
         cur[i] = rand() & 1;
 
     if (H <= 50 && W <= 50) {
-        printf("Initial board:\n");
+        printf("Poczatkowa plansza:\n");
         print_board(cur, H, W);
     } else {
-        printf("Board too large to print, skipping visualization...\n");
+        printf("Plansza zbyt duza, pomijam wizualizacje...\n");
     }
 
     printf("OpenMP threads: %d\n", omp_get_max_threads());
@@ -105,8 +105,8 @@ int main(int argc, char **argv)
     printf("Podsumowanie wykonania CPU:\n");
     printf("Rozmiar siatki: %d x %d\n", H, W);
     printf("Liczba krokow: %d\n", steps);
-    printf("Laczny czas: %.6f sekund\n", time_spent);
-    printf("Sredni czas na krok: %.6f sekund\n", time_spent / steps);
+    printf("Laczny czas: %.3f ms\n", time_spent * 1000.0);
+    printf("Sredni czas na krok: %.3f ms\n", (time_spent * 1000.0) / steps);
     printf("------------------------------------------------\n");
 
 
