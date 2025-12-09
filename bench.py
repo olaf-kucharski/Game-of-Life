@@ -18,12 +18,12 @@ CPU_BIN = ROOT / "gol-cpu"
 GPU_BIN = ROOT / "gol-gpu"
 MPI_BIN = ROOT / "gol-mpi"
 
-RE_CPU_TOTAL = re.compile(r"Laczny czas:\s*([0-9.]+) ms")
-RE_CPU_AVG = re.compile(r"Sredni czas na krok:\s*([0-9.]+) ms")
-RE_GPU_COMP = re.compile(r"Czas obliczen:\s*([0-9.]+) ms")
-RE_GPU_AVG = re.compile(r"Sredni czas na krok:\s*([0-9.]+) ms")
-RE_MPI_MAX = re.compile(r"Maksymalny czas .*:\s*([0-9.]+) ms")
-RE_MPI_AVG = re.compile(r"Sredni czas na krok:\s*([0-9.]+) ms")
+RE_CPU_TOTAL = re.compile(r"Laczny czas:\s*([0-9.]+)\s*ms")
+RE_CPU_AVG = re.compile(r"Sredni czas na krok:\s*([0-9.]+)\s*ms")
+RE_GPU_COMP = re.compile(r"Czas obliczen:\s*([0-9.]+)\s*ms")
+RE_GPU_AVG = re.compile(r"Sredni czas na krok:\s*([0-9.]+)\s*ms")
+RE_MPI_MAX = re.compile(r"Maksymalny czas.*?:\s*([0-9.]+)\s*ms", re.DOTALL)
+RE_MPI_AVG = re.compile(r"Średni czas na krok:\s*([0-9.]+)\s*ms")
 
 
 def parse_sizes(arg: str) -> List[Tuple[int, int]]:
@@ -124,19 +124,69 @@ def run_mpi(h: int, w: int, steps: int, procs: int) -> Dict[str, Any]:
 
 
 def write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
-    fieldnames = ["method", "h", "w", "steps", "workers", "metric_ms", "avg_ms_per_step", "ok", "notes"]
+    """Write two tables to CSV: 1) averages, 2) all runs with repetition number."""
+    fieldnames_avg = ["method", "h", "w", "steps", "workers", "avg_metric_ms", "avg_ms_per_step", "ok"]
+    fieldnames_all = ["run", "method", "h", "w", "steps", "workers", "metric_ms", "avg_ms_per_step", "ok", "notes"]
+    
+    # Group by (method, h, w, steps, workers) and compute averages
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in rows:
+        key = (r["method"], r["h"], r["w"], r["steps"], r["workers"])
+        groups[key].append(r)
+    
+    avg_rows = []
+    for (method, h, w, steps, workers), runs in groups.items():
+        ok_count = sum(1 for r in runs if r["rc"] == 0)
+        metrics = [r.get("metric_ms") for r in runs if r.get("metric_ms") is not None]
+        avgs = [r.get("avg_ms_per_step") for r in runs if r.get("avg_ms_per_step") is not None]
+        
+        avg_metric = sum(metrics) / len(metrics) if metrics else None
+        avg_avg = sum(avgs) / len(avgs) if avgs else None
+        
+        avg_rows.append({
+            "method": method,
+            "h": h,
+            "w": w,
+            "steps": steps,
+            "workers": workers,
+            "avg_metric_ms": avg_metric,
+            "avg_ms_per_step": avg_avg,
+            "ok": ok_count == len(runs),
+        })
+    
     with path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames_avg)
         writer.writeheader()
-        for r in rows:
+        for r in avg_rows:
             writer.writerow({
                 "method": r["method"],
                 "h": r["h"],
                 "w": r["w"],
                 "steps": r["steps"],
                 "workers": r["workers"],
-                "metric_ms": r.get("metric_ms"),
-                "avg_ms_per_step": r.get("avg_ms_per_step"),
+                "avg_metric_ms": f"{r.get('avg_metric_ms'):.3f}" if r.get("avg_metric_ms") is not None else "",
+                "avg_ms_per_step": f"{r.get('avg_ms_per_step'):.4f}" if r.get("avg_ms_per_step") is not None else "",
+                "ok": r["ok"],
+            })
+        
+        # Blank line separator
+        f.write("\n\n")
+        
+        # Write all runs
+        f.write("# Detailed results (all repetitions)\n")
+        writer2 = csv.DictWriter(f, fieldnames=fieldnames_all)
+        writer2.writeheader()
+        for i, r in enumerate(rows, 1):
+            writer2.writerow({
+                "run": i,
+                "method": r["method"],
+                "h": r["h"],
+                "w": r["w"],
+                "steps": r["steps"],
+                "workers": r["workers"],
+                "metric_ms": f"{r.get('metric_ms'):.3f}" if r.get("metric_ms") is not None else "",
+                "avg_ms_per_step": f"{r.get('avg_ms_per_step'):.4f}" if r.get("avg_ms_per_step") is not None else "",
                 "ok": r["rc"] == 0,
                 "notes": ("" if r["rc"] == 0 else f"rc={r['rc']}") + ("; missing metric" if r.get("metric_ms") is None else ""),
             })
@@ -153,14 +203,14 @@ def print_summary(rows: List[Dict[str, Any]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark CPU/GPU/MPI Game of Life")
-    parser.add_argument("--sizes", default="200x200,400x400", help="Comma-separated sizes HxW (e.g., 200x200,400x400)")
+    parser.add_argument("--sizes", default="200x200,400x400,800x800", help="Comma-separated sizes HxW (e.g., 200x200,400x400)")
     parser.add_argument("--steps", type=int, default=50, help="Number of steps per run")
-    parser.add_argument("--cpu-threads", default="1,4", help="Comma-separated OpenMP threads to test")
-    parser.add_argument("--mpi-procs", default="2,4", help="Comma-separated MPI process counts")
+    parser.add_argument("--cpu-threads", default="1,6", help="Comma-separated OpenMP threads to test")
+    parser.add_argument("--mpi-procs", default="2,6", help="Comma-separated MPI process counts")
     parser.add_argument("--skip-gpu", action="store_true", help="Skip GPU runs")
     parser.add_argument("--skip-build", action="store_true", help="Do not run make before benchmarks")
     parser.add_argument("--out", default="bench-results.csv", help="Output CSV file path")
-    parser.add_argument("--repeat", type=int, default=1, help="Repeat each configuration this many times")
+    parser.add_argument("--repeat", type=int, default=5, help="Repeat each configuration this many times")
     args = parser.parse_args()
 
     sizes = parse_sizes(args.sizes)
