@@ -13,11 +13,12 @@ class GameOfLifeLauncher:
         config_frame = ttk.LabelFrame(root, text="Konfiguracja symulacji", padding="10")
         config_frame.pack(fill="x", padx=10, pady=5)
 
-        # Wybór wersji (CPU / GPU)
+        # Wybór wersji (CPU / GPU / MPI)
         self.mode_var = tk.StringVar(value="CPU")
         ttk.Label(config_frame, text="Wersja obliczen:").grid(row=0, column=0, sticky="w", pady=5)
         ttk.Radiobutton(config_frame, text="CPU (OpenMP)", variable=self.mode_var, value="CPU").grid(row=0, column=1, sticky="w")
         ttk.Radiobutton(config_frame, text="GPU (CUDA)", variable=self.mode_var, value="GPU").grid(row=0, column=2, sticky="w")
+        ttk.Radiobutton(config_frame, text="MPI", variable=self.mode_var, value="MPI").grid(row=0, column=3, sticky="w")
 
         # Parametry: Wysokosc (H), Szerokosc (W), Kroki
         ttk.Label(config_frame, text="Wysokosc (H):").grid(row=1, column=0, sticky="w", pady=2)
@@ -34,6 +35,11 @@ class GameOfLifeLauncher:
         self.entry_steps = ttk.Entry(config_frame, width=10)
         self.entry_steps.insert(0, "10")
         self.entry_steps.grid(row=3, column=1, sticky="w")
+
+        ttk.Label(config_frame, text="Procesy MPI:").grid(row=4, column=0, sticky="w", pady=2)
+        self.entry_mpi_procs = ttk.Entry(config_frame, width=10)
+        self.entry_mpi_procs.insert(0, "2")
+        self.entry_mpi_procs.grid(row=4, column=1, sticky="w")
 
         # --- Sekcja Akcji ---
         action_frame = ttk.Frame(root, padding="10")
@@ -82,19 +88,30 @@ class GameOfLifeLauncher:
         h_str = self.entry_h.get()
         w_str = self.entry_w.get()
         steps_str = self.entry_steps.get()
+        mpi_procs_str = self.entry_mpi_procs.get()
 
         # Walidacja
-        if not (h_str.isdigit() and w_str.isdigit() and steps_str.isdigit()):
-            messagebox.showerror("Blad", "Wymiary i kroki musza byc liczbami calkowitymi!")
+        if not (h_str.isdigit() and w_str.isdigit() and steps_str.isdigit() and mpi_procs_str.isdigit()):
+            messagebox.showerror("Blad", "Wymiary, kroki i liczba procesów muszą być liczbami całkowitymi!")
             return
 
-        executable = "./gol-cpu" if mode == "CPU" else "./gol-gpu"
+        if mode == "CPU":
+            executable = "./gol-cpu"
+            cmd = [executable, h_str, w_str, steps_str]
+        elif mode == "GPU":
+            executable = "./gol-gpu"
+            cmd = [executable, h_str, w_str, steps_str]
+        elif mode == "MPI":
+            executable = "./gol-mpi"
+            mpi_procs = int(mpi_procs_str)
+            cmd = ["mpirun", "-np", str(mpi_procs), executable, h_str, w_str, steps_str, str(mpi_procs)]
+        else:
+            messagebox.showerror("Blad", "Nieznana wersja!")
+            return
 
         if not os.path.exists(executable):
             messagebox.showwarning("Brak pliku", f"Nie znaleziono pliku {executable}.\nKliknij najpierw 'Skompiluj (make)'.")
             return
-
-        cmd = [executable, h_str, w_str, steps_str]
 
         self.log(f"\n>>> Uruchamianie: {' '.join(cmd)}", clear=True)
         self.root.update()
